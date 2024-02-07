@@ -1,0 +1,29 @@
+{
+  "name": "mit-bad-bank-backend",
+  "version": "1.0.0",
+  "description": "MIT bad bank assignment api.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "nodemon index.mjs",
+    "dev": "docker compose up -d mongodb_container && nodemon mongo-test.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/apquinn/mit-bad-bank-backend.git"
+  },
+  "author": "Andrew Quinn",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/apquinn/mit-bad-bank-backend/issues"
+  },
+  "homepage": "https://github.com/apquinn/mit-bad-bank-backend#readme",
+  "dependencies": {
+    "axios": "^1.6.7",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.1",
+    "express": "^4.18.2",
+    "mongodb": "^6.3.0",
+    "mongoose": "^8.1.1"
+  }
+}

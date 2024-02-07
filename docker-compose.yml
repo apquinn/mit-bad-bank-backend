@@ -1,0 +1,22 @@
+version: '3.7'
+services:
+  mongodb_container:
+    image: mongo:latest
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: rootpassword
+    ports:
+      - 27017:27017
+    volumes:
+      - mongodb_data_container:/data/db
+  tv-search-api:
+    depends_on:
+      - mongodb_container
+    build: .
+    environment:
+      - MONGO_CONNECTION_STRING=mongodb://root:rootpassword@mongodb_container
+    ports:
+      - 3001:3001
+
+volumes:
+  mongodb_data_container:
