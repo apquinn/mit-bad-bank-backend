@@ -4,6 +4,7 @@ const connect = () => {
   const url = process.env.MONGO_CONNECTION_STRING;
   mongoose.connect(url);
   mongoose.connection.once("open", async () => {
+    /*
     const dbname = "myproject";
     const db = client.db(dbname);
 
@@ -18,6 +19,7 @@ const connect = () => {
       }
       console.log("document insert");
     });
+		*/
     console.log("Connected to database");
   });
   mongoose.connection.on("error", (err) => {
