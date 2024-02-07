@@ -8,9 +8,12 @@ dotenv.config();
 db.connect();
 
 app.post("/test", async (req, res) => {
-  db.data.people.push("Drew Quinn");
+  db.data.insertOne({ name: "Drew Quinn" });
+  /*
+	db.data.people.push("Drew Quinn");
   await db.write();
   res.sendStatus(200);
+*/
 });
 
 var PORT = 3001;
