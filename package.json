@@ -6,7 +6,8 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "nodemon index.mjs",
-    "dev": "docker compose up -d mongodb_container && nodemon mongo-test.mjs"
+    "dev-db-test": "docker compose up -d mongodb_container && nodemon mongo-test.mjs",
+    "dev": "docker compose up -d mongodb_container && nodemon index.mjs"
   },
   "repository": {
     "type": "git",
