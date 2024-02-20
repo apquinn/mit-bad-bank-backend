@@ -8,6 +8,7 @@ const userSchema = new mongoose.Schema({
   action: "string",
   amount: "number",
   dateTime: "number",
+  account: "string",
   balance: "number",
 });
 

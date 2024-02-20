@@ -6,6 +6,7 @@ import bodyParser from "body-parser";
 import dotenv from "dotenv";
 import { User } from "./entities/models/user.mjs";
 import { Transactions } from "./entities/models/transactions.mjs";
+import { Accounts } from "./entities/models/accounts.mjs";
 import { UserController } from "./entities/user/user.controller.mjs";
 
 app.use(cors());
@@ -15,6 +16,33 @@ app.use(bodyParser.json());
 
 const userController = new UserController();
 
+async function addAccount(res, email, name) {
+  const trans = await Accounts.where("email")
+    .equals(email)
+    .where("name")
+    .equals(name);
+  if (trans.length === 0) {
+    let newAccounts = new Accounts({
+      name: name,
+      email: email,
+    });
+    await newAccounts.save();
+
+    let newTransaction = new Transactions({
+      type: "account creation",
+      email: email,
+      action: "account creation",
+      name: name,
+      dateTime: Date.now(),
+    });
+    await newTransaction.save();
+
+    return true;
+  } else {
+    return `Account with the name ${name} already exists`;
+  }
+}
+
 async function getUsername(email) {
   const trans = await User.where("email").equals(email);
   const transArray = Object.entries(trans);
@@ -22,15 +50,16 @@ async function getUsername(email) {
   else return "Name not found";
 }
 
-async function getBalance(email, date) {
+async function getBalance(email, date, account) {
   const trans = await Transactions.where("type")
     .equals("transaction")
     .where("email")
     .equals(email)
     .where("dateTime")
-    .lte(date);
+    .lte(date)
+    .where("account")
+    .equals(account);
   const transArray = Object.entries(trans);
-
   let amountTotal = 0;
   const output = transArray.map((entry) => {
     amountTotal = amountTotal + Number(entry[1].amount);
@@ -40,34 +69,41 @@ async function getBalance(email, date) {
 
 function callback(res, balances) {
   const sortedBalances = balances.toSorted((a, b) => a.dateTime - b.dateTime);
-  console.log(sortedBalances);
   res.send(sortedBalances);
 }
 
-app.get("/get-all-transactions/:email/:date", async (req, res) => {
+app.get("/get-all-transactions/:email/:account/:date", async (req, res) => {
   const trans = await Transactions.where("email")
     .equals(req.params.email)
+    .where("account")
+    .equals(req.params.account)
     .sort({ dateTime: "asc" });
   const transArray = Object.entries(trans);
 
   let balances = [];
   var itemsProcessed = 0;
   transArray.forEach(async (entry, index, insideArray) => {
-    getBalance(req.params.email, entry[1].dateTime).then((balance) => {
-      if (entry[1].type === "transaction") {
-        entry[1].balance = balance;
+    getBalance(req.params.email, entry[1].dateTime, req.params.account).then(
+      (balance) => {
+        if (entry[1].type === "transaction") {
+          entry[1].balance = balance;
+        }
+        balances.push(entry[1]);
+        itemsProcessed++;
+        if (itemsProcessed === insideArray.length) {
+          callback(res, balances);
+        }
       }
-      balances.push(entry[1]);
-      itemsProcessed++;
-      if (itemsProcessed === insideArray.length) {
-        callback(res, balances);
-      }
-    });
+    );
   });
 });
 
-app.get("/get-balance/:email/:date", async (req, res) => {
-  let localBalance = await getBalance(req.params.email, req.params.date);
+app.get("/get-balance/:email/:date/:account", async (req, res) => {
+  let localBalance = await getBalance(
+    req.params.email,
+    req.params.date,
+    req.params.account
+  );
   res.send({ balance: localBalance });
 });
 
@@ -116,6 +152,18 @@ app.post("/signup", async function (req, res) {
     const trans = await User.where("email").equals(req.body.user.email);
     if (trans.length === 0) {
       const response = await userController.signup(req.body.user);
+
+      if (req.body.user.userType === "customer") {
+        let newAccount = addAccount(
+          res,
+          req.body.user.email,
+          "primary checking"
+        );
+        if (!newAccount) {
+          res.send("New account failed to create");
+        }
+      }
+
       res.send(JSON.stringify(response));
     } else {
       res.send("User already exists");
@@ -125,22 +173,30 @@ app.post("/signup", async function (req, res) {
   }
 });
 
-app.get("/transaction/:email/:amount/:type/:action", async (req, res) => {
-  const newTransaction = new Transactions({
-    type: req.params.type,
-    email: req.params.email,
-    action: req.params.action,
-    amount: req.params.amount,
-    dateTime: Date.now(),
-  });
-  await newTransaction.save();
+app.get(
+  "/transaction/:email/:amount/:type/:action/:account",
+  async (req, res) => {
+    const newTransaction = new Transactions({
+      type: req.params.type,
+      email: req.params.email,
+      action: req.params.action,
+      amount: req.params.amount,
+      dateTime: Date.now(),
+      account: req.params.account,
+    });
+    await newTransaction.save();
 
-  let localBalance = await getBalance(req.params.email, Date.now());
-  res.send({ balance: localBalance });
-});
+    let localBalance = await getBalance(
+      req.params.email,
+      Date.now(),
+      req.params.account
+    );
+    res.send({ balance: localBalance });
+  }
+);
 
 app.get(
-  "/transfer/:email/:recipient/:amount/:type/:action",
+  "/transfer/:email/:emailAccount/:recipient/:recipientAccount/:amount/:type/:action",
   async (req, res) => {
     let newTransaction = new Transactions({
       type: req.params.type,
@@ -148,6 +204,7 @@ app.get(
       action: "Withdrawal",
       amount: req.params.amount,
       dateTime: Date.now(),
+      account: req.params.emailAccount,
     });
     await newTransaction.save();
 
@@ -155,12 +212,17 @@ app.get(
       type: req.params.type,
       email: req.params.recipient,
       action: "Deposit",
-      amount: req.params.amount,
+      amount: -req.params.amount,
       dateTime: Date.now(),
+      account: req.params.recipientAccount,
     });
     await newTransaction.save();
 
-    let localBalance = await getBalance(req.params.email, Date.now());
+    let localBalance = await getBalance(
+      req.params.email,
+      Date.now(),
+      req.params.emailAccount
+    );
     res.send({ balance: localBalance });
   }
 );
@@ -170,7 +232,7 @@ app.get("/get-users/:email", async (req, res) => {
   res.send({ trans });
 });
 
-app.get("/get-customers", async (req, res) => {
+app.get("/get-customers/:email", async (req, res) => {
   const trans = await User.where("email")
     .ne(req.params.email)
     .where("userType")
@@ -178,28 +240,82 @@ app.get("/get-customers", async (req, res) => {
   res.send({ trans });
 });
 
-app.get("/delete-transaction/:id/:email", async (req, res) => {
+app.get("/get-all-customers", async (req, res) => {
+  const trans = await User.where("userType").equals("customer");
+  res.send({ trans });
+});
+
+app.get("/delete-transaction/:id/:email/:account", async (req, res) => {
   await Transactions.deleteOne({ _id: req.params.id });
 
   const trans = await Transactions.where("email")
     .equals(req.params.email)
+    .where("account")
+    .equals(req.params.account)
     .sort({ dateTime: "asc" });
   const transArray = Object.entries(trans);
 
   let balances = [];
   var itemsProcessed = 0;
   transArray.forEach(async (entry, index, insideArray) => {
-    getBalance(req.params.email, entry[1].dateTime).then((balance) => {
-      if (entry[1].type === "transaction") {
-        entry[1].balance = balance;
+    getBalance(req.params.email, entry[1].dateTime, req.params.account).then(
+      (balance) => {
+        if (entry[1].type === "transaction") {
+          entry[1].balance = balance;
+        }
+        balances.push(entry[1]);
+        itemsProcessed++;
+        if (itemsProcessed === insideArray.length) {
+          callback(res, balances);
+        }
       }
-      balances.push(entry[1]);
-      itemsProcessed++;
-      if (itemsProcessed === insideArray.length) {
-        callback(res, balances);
-      }
-    });
+    );
   });
+});
+
+app.get("/get-profile/:email", async (req, res) => {
+  const trans = await User.where("email").equals(req.params.email);
+  res.send({ trans });
+});
+
+app.get("/get-accounts/:email", async (req, res) => {
+  const trans = await Accounts.where("email").equals(req.params.email);
+  res.send({ trans });
+});
+
+app.get("/add-account/:email/:name", async (req, res) => {
+  const result = await addAccount(res, req.params.email, req.params.name);
+  if (result === true) {
+    const trans = await Accounts.where("email").equals(req.params.email);
+    res.send({ trans });
+  } else {
+    res.send(result);
+  }
+});
+
+app.get("/close-account/:email/:id/", async (req, res) => {
+  const accountName = await Accounts.where("_id").equals(req.params.id);
+
+  const balance = getBalance(req.params.email, Date.now(), accountName);
+  if (balance > 0) {
+    res.send(
+      "Account has a balance. Please withdraw or transfer funds before attempting to close account"
+    );
+  }
+
+  await Accounts.deleteOne({ _id: req.params.id });
+
+  let newTransaction = new Transactions({
+    type: "Account deletion",
+    email: req.params.email,
+    action: "Account deletion",
+    name: accountName[0].name,
+    dateTime: Date.now(),
+  });
+  await newTransaction.save();
+
+  const trans = await Accounts.where("email").equals(req.params.email);
+  res.send({ trans });
 });
 
 var port = 3001;

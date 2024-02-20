@@ -19,7 +19,6 @@ export class UserController {
   }
 
   async signup(user) {
-    console.log(user);
     const error = await this.validateUser(user);
     if (error === "") {
       try {
@@ -42,8 +41,7 @@ export class UserController {
           type: "create user",
           name: user.name,
           email: user.email,
-          balance: 0,
-          loggedin: false,
+          dateTime: Date.now(),
         });
         await newTransaction.save();
 
