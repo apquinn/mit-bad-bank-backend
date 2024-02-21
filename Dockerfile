@@ -1,7 +1,7 @@
-FROM node:18
-WORKDIR /usr/src/tv-search-api
+FROM node:20
+WORKDIR /usr/src/bad-bank-backend
 COPY package*.json ./
 RUN npm install
 COPY . .
-EXPOSE 3000:3000
-CMD [ "node", "server.mjs" ]
+EXPOSE 3001:3001
+CMD [ "node", "index.mjs" ]
