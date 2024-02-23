@@ -7,7 +7,7 @@ const connect = () => {
     console.log("Connected to database");
   });
   mongoose.connection.on("error", (err) => {
-    alert("Error connecting to database  ", err);
+    console.log("Error connecting to database  ", err);
   });
 };
 
