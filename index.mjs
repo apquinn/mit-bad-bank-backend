@@ -7,7 +7,10 @@ import dotenv from "dotenv";
 import { User } from "./entities/models/user.mjs";
 import { Transactions } from "./entities/models/transactions.mjs";
 import { Accounts } from "./entities/models/accounts.mjs";
+import { Checks } from "./entities/models/checks.mjs";
 import { UserController } from "./entities/user/user.controller.mjs";
+import fileUpload from "express-fileupload";
+import path from "path";
 
 app.use(cors());
 dotenv.config();
@@ -73,10 +76,11 @@ function callback(res, balances) {
 }
 
 app.get("/get-all-transactions/:email/:account/:date", async (req, res) => {
-  const trans = await Transactions.where("email")
+  const trans = await Transactions.find({
+    $or: [{ account: req.params.account }, { type: { $ne: "transaction" } }],
+  })
+    .where("email")
     .equals(req.params.email)
-    .where("account")
-    .equals(req.params.account)
     .sort({ dateTime: "asc" });
   const transArray = Object.entries(trans);
 
@@ -133,6 +137,7 @@ app.post("/login", async (req, res) => {
 });
 
 app.get("/logout/:email", async (req, res) => {
+  console.log(req.params.email);
   let username = await getUsername(req.params.email);
   const newTransaction = new Transactions({
     type: "logout",
@@ -317,6 +322,64 @@ app.get("/close-account/:email/:id/", async (req, res) => {
   const trans = await Accounts.where("email").equals(req.params.email);
   res.send({ trans });
 });
+
+app.use(fileUpload());
+app.post("/upload-deposit/:email/:account/:amount", async (req, res) => {
+  const filename = Date.now() + "-" + req.files.ImportFile.name;
+  const fullPathFilename = path.join("./public/checkFiles", filename);
+  req.files.ImportFile.mv(fullPathFilename);
+
+  const newCheck = new Checks({
+    email: req.params.email,
+    checkPic: filename,
+    dateTime: Date.now(),
+    approved: false,
+    amount: req.params.amount,
+  });
+  await newCheck.save();
+
+  const newTransaction = new Transactions({
+    type: "transaction",
+    email: req.params.email,
+    action: "check upload",
+    amount: req.params.amount,
+    dateTime: Date.now(),
+    account: req.params.account,
+  });
+  await newTransaction.save();
+
+  let localBalance = await getBalance(
+    req.params.email,
+    Date.now(),
+    req.params.account
+  );
+  res.send({ balance: localBalance });
+});
+
+app.get("/get-all-unapproved", async (req, res) => {
+  const trans = await Checks.where("approved")
+    .equals(false)
+    .sort({ dateTime: "asc" });
+  const transArray = Object.entries(trans);
+
+  res.send(transArray);
+});
+
+app.get("/approve-check/:checkNumber", async (req, res) => {
+  let doc = await Checks.findOneAndUpdate(
+    { _id: req.params.checkNumber },
+    { approved: true }
+  );
+
+  const trans = await Checks.where("approved")
+    .equals(false)
+    .sort({ dateTime: "asc" });
+  const transArray = Object.entries(trans);
+
+  res.send(transArray);
+});
+
+app.use("/uploads", express.static("public/checkFiles"));
 
 var port = 3001;
 app.listen(port);

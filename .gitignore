@@ -1,5 +1,6 @@
 # My App Specific
 .env
+public/checkFiles
 
 # Logs
 logs
