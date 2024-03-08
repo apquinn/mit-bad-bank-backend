@@ -64,14 +64,36 @@ async function getBalance(email, date, account) {
     .equals(account);
   const transArray = Object.entries(trans);
   let amountTotal = 0;
-  const output = transArray.map((entry) => {
+  let output = transArray.map((entry) => {
     amountTotal = amountTotal + Number(entry[1].amount);
   });
-  return amountTotal;
+
+  const checks = await Checks.where("email")
+    .equals(email)
+    .where("approved")
+    .equals(false)
+    .where("dateTime")
+    .lte(date);
+
+  const checksArray = Object.entries(checks);
+
+  let checksTotal = 0;
+  output = checksArray.map((entry) => {
+    checksTotal = checksTotal + Number(entry[1].amount);
+  });
+
+  const finalBalance = (amountTotal - checksTotal)
+    .toString()
+    .replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  const finalPending = checksTotal
+    .toString()
+    .replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+
+  return { balance: finalBalance, pending: finalPending };
 }
 
 function callback(res, balances) {
-  const sortedBalances = balances.toSorted((a, b) => a.dateTime - b.dateTime);
+  let sortedBalances = balances.toSorted((a, b) => a.dateTime - b.dateTime);
   res.send(sortedBalances);
 }
 
@@ -86,20 +108,26 @@ app.get("/get-all-transactions/:email/:account/:date", async (req, res) => {
 
   let balances = [];
   var itemsProcessed = 0;
-  transArray.forEach(async (entry, index, insideArray) => {
-    getBalance(req.params.email, entry[1].dateTime, req.params.account).then(
-      (balance) => {
-        if (entry[1].type === "transaction") {
-          entry[1].balance = balance;
+
+  if (transArray.length > 0) {
+    transArray.forEach(async (entry, index, insideArray) => {
+      getBalance(req.params.email, entry[1].dateTime, req.params.account).then(
+        (balance) => {
+          if (entry[1].type === "transaction") {
+            entry[1].balance = balance.balance;
+            entry[1].pending = balance.pending;
+          }
+          balances.push(entry[1]);
+          itemsProcessed++;
+          if (itemsProcessed === insideArray.length) {
+            callback(res, balances);
+          }
         }
-        balances.push(entry[1]);
-        itemsProcessed++;
-        if (itemsProcessed === insideArray.length) {
-          callback(res, balances);
-        }
-      }
-    );
-  });
+      );
+    });
+  } else {
+    res.send([]);
+  }
 });
 
 app.get("/get-balance/:email/:date/:account", async (req, res) => {
@@ -108,7 +136,7 @@ app.get("/get-balance/:email/:date/:account", async (req, res) => {
     req.params.date,
     req.params.account
   );
-  res.send({ balance: localBalance });
+  res.send({ balance: localBalance.balance, pending: localBalance.pending });
 });
 
 app.post("/login", async (req, res) => {
@@ -137,7 +165,6 @@ app.post("/login", async (req, res) => {
 });
 
 app.get("/logout/:email", async (req, res) => {
-  console.log(req.params.email);
   let username = await getUsername(req.params.email);
   const newTransaction = new Transactions({
     type: "logout",
@@ -196,7 +223,7 @@ app.get(
       Date.now(),
       req.params.account
     );
-    res.send({ balance: localBalance });
+    res.send({ balance: localBalance.balance, pending: localBalance.pending });
   }
 );
 
@@ -228,7 +255,7 @@ app.get(
       Date.now(),
       req.params.emailAccount
     );
-    res.send({ balance: localBalance });
+    res.send({ balance: localBalance.balance, pending: localBalance.pending });
   }
 );
 
@@ -251,31 +278,41 @@ app.get("/get-all-customers", async (req, res) => {
 });
 
 app.get("/delete-transaction/:id/:email/:account", async (req, res) => {
+  let trans = await Transactions.where("_id").equals(req.params.id);
+  if (trans.length > 0 && trans[0].checkNumber !== "") {
+    await Checks.deleteOne({ _id: trans[0].checkNumber });
+  }
+
   await Transactions.deleteOne({ _id: req.params.id });
 
-  const trans = await Transactions.where("email")
+  trans = await Transactions.where("email")
     .equals(req.params.email)
     .where("account")
     .equals(req.params.account)
     .sort({ dateTime: "asc" });
-  const transArray = Object.entries(trans);
+  let transArray = Object.entries(trans);
 
   let balances = [];
   var itemsProcessed = 0;
-  transArray.forEach(async (entry, index, insideArray) => {
-    getBalance(req.params.email, entry[1].dateTime, req.params.account).then(
-      (balance) => {
-        if (entry[1].type === "transaction") {
-          entry[1].balance = balance;
+  if (transArray.length > 0) {
+    transArray.forEach(async (entry, index, insideArray) => {
+      getBalance(req.params.email, entry[1].dateTime, req.params.account).then(
+        (balance) => {
+          if (entry[1].type === "transaction") {
+            entry[1].balance = balance.balance;
+            entry[1].pending = balance.pending;
+          }
+          balances.push(entry[1]);
+          itemsProcessed++;
+          if (itemsProcessed === insideArray.length) {
+            callback(res, balances);
+          }
         }
-        balances.push(entry[1]);
-        itemsProcessed++;
-        if (itemsProcessed === insideArray.length) {
-          callback(res, balances);
-        }
-      }
-    );
-  });
+      );
+    });
+  } else {
+    res.send([]);
+  }
 });
 
 app.get("/get-profile/:email", async (req, res) => {
@@ -302,9 +339,14 @@ app.get("/close-account/:email/:id/", async (req, res) => {
   const accountName = await Accounts.where("_id").equals(req.params.id);
 
   const balance = getBalance(req.params.email, Date.now(), accountName);
-  if (balance > 0) {
+  if (balance.balance > 0) {
     res.send(
       "Account has a balance. Please withdraw or transfer funds before attempting to close account"
+    );
+  }
+  if (balance.pending > 0) {
+    res.send(
+      "Account has a pending balance. Please waiting for pending depposit to be approved and then withdraw the balance before attempting to close account"
     );
   }
 
@@ -336,7 +378,7 @@ app.post("/upload-deposit/:email/:account/:amount", async (req, res) => {
     approved: false,
     amount: req.params.amount,
   });
-  await newCheck.save();
+  const result = await newCheck.save();
 
   const newTransaction = new Transactions({
     type: "transaction",
@@ -345,6 +387,7 @@ app.post("/upload-deposit/:email/:account/:amount", async (req, res) => {
     amount: req.params.amount,
     dateTime: Date.now(),
     account: req.params.account,
+    checkNumber: result._id,
   });
   await newTransaction.save();
 
@@ -353,7 +396,7 @@ app.post("/upload-deposit/:email/:account/:amount", async (req, res) => {
     Date.now(),
     req.params.account
   );
-  res.send({ balance: localBalance });
+  res.send({ balance: localBalance.balance, pending: localBalance.pending });
 });
 
 app.get("/get-all-unapproved", async (req, res) => {
@@ -370,6 +413,18 @@ app.get("/approve-check/:checkNumber", async (req, res) => {
     { _id: req.params.checkNumber },
     { approved: true }
   );
+
+  const trans = await Checks.where("approved")
+    .equals(false)
+    .sort({ dateTime: "asc" });
+  const transArray = Object.entries(trans);
+
+  res.send(transArray);
+});
+
+app.get("/reject-check/:checkNumber", async (req, res) => {
+  await Checks.deleteOne({ _id: req.params.checkNumber });
+  await Transactions.deleteOne({ checkNumber: req.params.checkNumber });
 
   const trans = await Checks.where("approved")
     .equals(false)

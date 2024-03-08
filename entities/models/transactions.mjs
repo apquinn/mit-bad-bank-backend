@@ -9,7 +9,9 @@ const userSchema = new mongoose.Schema({
   amount: "number",
   dateTime: "number",
   account: "string",
-  balance: "number",
+  balance: "string",
+  pending: "string",
+  checkNumber: "string",
 });
 
 export const Transactions = mongoose.model("transaction", userSchema);
