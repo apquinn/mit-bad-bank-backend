@@ -336,31 +336,35 @@ app.get("/add-account/:email/:name", async (req, res) => {
 app.get("/close-account/:email/:id/", async (req, res) => {
   const accountName = await Accounts.where("_id").equals(req.params.id);
 
-  const balance = getBalance(req.params.email, Date.now(), accountName);
-  if (balance.balance > 0) {
+  const balance = await getBalance(
+    req.params.email,
+    Date.now(),
+    accountName[0].name
+  );
+
+  if (Number(balance.balance.replaceAll(",", "")) > 0) {
     res.send(
       "Account has a balance. Please withdraw or transfer funds before attempting to close account"
     );
-  }
-  if (balance.pending > 0) {
+  } else if (Number(balance.pending.replaceAll(",", "")) > 0) {
     res.send(
       "Account has a pending balance. Please waiting for pending depposit to be approved and then withdraw the balance before attempting to close account"
     );
+  } else {
+    await Accounts.deleteOne({ _id: req.params.id });
+
+    let newTransaction = new Transactions({
+      type: "Account deletion",
+      email: req.params.email,
+      action: "Account deletion",
+      name: accountName[0].name,
+      dateTime: Date.now(),
+    });
+    await newTransaction.save();
+
+    const trans = await Accounts.where("email").equals(req.params.email);
+    res.send({ trans });
   }
-
-  await Accounts.deleteOne({ _id: req.params.id });
-
-  let newTransaction = new Transactions({
-    type: "Account deletion",
-    email: req.params.email,
-    action: "Account deletion",
-    name: accountName[0].name,
-    dateTime: Date.now(),
-  });
-  await newTransaction.save();
-
-  const trans = await Accounts.where("email").equals(req.params.email);
-  res.send({ trans });
 });
 
 app.use(fileUpload());
