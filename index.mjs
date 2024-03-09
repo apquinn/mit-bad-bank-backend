@@ -287,8 +287,6 @@ app.get("/delete-transaction/:id/:email/:account", async (req, res) => {
 
   trans = await Transactions.where("email")
     .equals(req.params.email)
-    .where("account")
-    .equals(req.params.account)
     .sort({ dateTime: "asc" });
   let transArray = Object.entries(trans);
 
