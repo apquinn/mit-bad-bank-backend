@@ -438,6 +438,6 @@ app.get("/reject-check/:checkNumber", async (req, res) => {
 
 app.use("/uploads", express.static("public/checkFiles"));
 
-var port = 443;
+var port = 3001;
 app.listen(port);
 console.log("Listening on port " + port);
