@@ -16,7 +16,7 @@ services:
     environment:
       - MONGO_CONNECTION_STRING=mongodb://root:rootpassword@mongodb_container
     ports:
-      - 443:443
+      - 3001:3001
 
 volumes:
   mongodb_data_container:
